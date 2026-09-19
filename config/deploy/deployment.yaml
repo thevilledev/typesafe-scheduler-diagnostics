@@ -20,6 +20,9 @@ spec:
       - name: scheduler
         image: typesafe-scheduler-diagnostics:dev
         imagePullPolicy: IfNotPresent
+        ports:
+        - name: dashboard
+          containerPort: 8080
         args:
         - --config=/etc/kubernetes/scheduler-config.yaml
         env:

@@ -3,7 +3,7 @@ KIND_CLUSTER ?= typesafe-diagnostics
 KIND_NODE_IMAGE ?= kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
 TYPESAFE_ENV ?= typesafe-env
 
-.PHONY: build demo demo-clean deploy image kind-demo kind-down kind-load kind-up secret test verify-demo
+.PHONY: build demo demo-clean deploy image kind-demo kind-down kind-load kind-up secret test ui verify-demo
 
 test:
 	go test ./...
@@ -32,6 +32,7 @@ secret:
 
 deploy:
 	kubectl apply -f config/deploy
+	kubectl --namespace typesafe-system rollout restart deployment/typesafe-scheduler
 	kubectl --namespace typesafe-system rollout status deployment/typesafe-scheduler --timeout=120s
 
 demo:
@@ -39,6 +40,9 @@ demo:
 
 verify-demo:
 	hack/verify-demo.sh
+
+ui:
+	kubectl --namespace typesafe-system port-forward deployment/typesafe-scheduler 8080:8080
 
 demo-clean:
 	kubectl delete -f config/demo.yaml --ignore-not-found

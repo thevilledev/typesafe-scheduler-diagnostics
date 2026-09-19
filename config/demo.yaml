@@ -10,6 +10,7 @@ metadata:
   namespace: typesafe-demo
   annotations:
     diagnostics.typesafe.ai/intent: Run a deliberately oversized batch worker.
+    diagnostics.typesafe.ai/expected-remediation: scale_cluster
 spec:
   schedulerName: typesafe-scheduler
   restartPolicy: Never
@@ -31,6 +32,7 @@ metadata:
   namespace: typesafe-demo
   annotations:
     diagnostics.typesafe.ai/intent: Run only in the fictional unavailable pool.
+    diagnostics.typesafe.ai/expected-remediation: fix_workload_constraints
 spec:
   schedulerName: typesafe-scheduler
   restartPolicy: Never
@@ -94,6 +96,7 @@ metadata:
   namespace: typesafe-demo
   annotations:
     diagnostics.typesafe.ai/intent: Mount a local volume for a small database.
+    diagnostics.typesafe.ai/expected-remediation: fix_storage_or_devices
 spec:
   schedulerName: typesafe-scheduler
   restartPolicy: Never

@@ -18,6 +18,35 @@ subjects:
   namespace: typesafe-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: typesafe-scenario-generator
+  namespace: typesafe-demo
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - deletecollection
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: typesafe-scenario-generator
+  namespace: typesafe-demo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: typesafe-scenario-generator
+subjects:
+- kind: ServiceAccount
+  name: typesafe-scheduler
+  namespace: typesafe-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: typesafe-scheduler-volume
