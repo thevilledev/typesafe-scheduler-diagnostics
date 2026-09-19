@@ -122,6 +122,32 @@ type Result struct {
 	Usage         Usage                   `json:"usage"`
 }
 
+// Question describes one typed judgment sent to TypeSafe. Question IDs are
+// local API keys and are not used by the model during inference.
+type Question struct {
+	Type         string `json:"type"`
+	Instructions string `json:"instructions"`
+	Criteria     any    `json:"criteria,omitempty"`
+}
+
+// Contract describes the stable decision boundary around Jev.
+type Contract struct {
+	Model                           string              `json:"model"`
+	MinimumRecommendationConfidence float64             `json:"minimum_recommendation_confidence"`
+	Questions                       map[string]Question `json:"questions"`
+}
+
+// DecisionContract returns the model, questions, and confidence policy used by
+// this client. It is safe to expose for inspection because it contains no
+// credentials or runtime state.
+func DecisionContract() Contract {
+	return Contract{
+		Model:                           defaultModel,
+		MinimumRecommendationConfidence: DefaultRecommendationConfidence,
+		Questions:                       diagnosisQuestions(),
+	}
+}
+
 // Recommendation returns code-owned advice only for known, sufficiently
 // confident results.
 func (r Result) Recommendation(minConfidence float64) (string, bool) {
@@ -232,13 +258,7 @@ func waitFor(ctx context.Context, duration time.Duration) error {
 type systemOneRequest struct {
 	State     Failure             `json:"state"`
 	Model     string              `json:"model"`
-	Questions map[string]question `json:"questions"`
-}
-
-type question struct {
-	Type         string `json:"type"`
-	Instructions string `json:"instructions"`
-	Criteria     any    `json:"criteria,omitempty"`
+	Questions map[string]Question `json:"questions"`
 }
 
 type systemOneResponse struct {
@@ -259,8 +279,8 @@ type choiceAnswer struct {
 	Confidence    float64            `json:"confidence"`
 }
 
-func diagnosisQuestions() map[string]question {
-	return map[string]question{
+func diagnosisQuestions() map[string]Question {
+	return map[string]Question{
 		"capacity_shortfall": {
 			Type:         "noul",
 			Instructions: "Do `reasons`, `pre_filter_message`, and `post_filter_message` show that the Pod's requested compute resources exceed currently available suitable node capacity?",

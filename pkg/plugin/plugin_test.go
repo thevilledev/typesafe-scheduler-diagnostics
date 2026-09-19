@@ -17,6 +17,7 @@ limitations under the License.
 package plugin
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +27,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	fwk "k8s.io/kube-scheduler/framework"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
+
+	"github.com/typesafe-ai/typesafe-scheduler-diagnostics/pkg/diagnosis"
+	"github.com/typesafe-ai/typesafe-scheduler-diagnostics/pkg/observation"
 )
 
 func TestFailureFromPostFilter(t *testing.T) {
@@ -62,6 +66,50 @@ func TestFailureFromPostFilter(t *testing.T) {
 	if got, want := strings.Join(failure.UnschedulablePlugins, ","), "NodeAffinity,NodeResourcesFit,TaintToleration"; got != want {
 		t.Errorf("plugins = %q, want %q", got, want)
 	}
+}
+
+func TestDiagnoseRecordsValidationWithoutPublishingLowConfidenceAdvice(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	recorder := &captureRecorder{}
+	plugin := &Plugin{
+		diagnoser: staticDiagnoser{result: diagnosis.Result{
+			Remediation: diagnosis.RemediationScaleCluster,
+			Confidence:  0.5,
+		}},
+		recorder: recorder,
+		now:      func() time.Time { return now },
+	}
+	plugin.diagnose(context.Background(), queuedFailure{
+		pod: &v1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID("pod-uid")}},
+		failure: diagnosis.Failure{
+			Pod: diagnosis.PodSummary{Namespace: "demo", Name: "large-worker"},
+		},
+		expectedRemediation: diagnosis.RemediationScaleCluster,
+	})
+
+	if got, want := recorder.observation.Validation, observation.ValidationPassed; got != want {
+		t.Errorf("validation = %q, want %q", got, want)
+	}
+	if recorder.observation.RecommendationPublished {
+		t.Error("low-confidence recommendation was marked as published")
+	}
+}
+
+type staticDiagnoser struct {
+	result diagnosis.Result
+	err    error
+}
+
+func (d staticDiagnoser) Diagnose(context.Context, diagnosis.Failure) (diagnosis.Result, error) {
+	return d.result, d.err
+}
+
+type captureRecorder struct {
+	observation observation.Observation
+}
+
+func (r *captureRecorder) Record(value observation.Observation) {
+	r.observation = value
 }
 
 func TestFailureFromPostFilterBoundsText(t *testing.T) {

@@ -37,6 +37,7 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"github.com/typesafe-ai/typesafe-scheduler-diagnostics/pkg/diagnosis"
+	"github.com/typesafe-ai/typesafe-scheduler-diagnostics/pkg/observation"
 )
 
 const (
@@ -46,6 +47,10 @@ const (
 	// IntentAnnotation optionally gives the diagnosis bounded, user-supplied
 	// context about what the workload is meant to accomplish.
 	IntentAnnotation = "diagnostics.typesafe.ai/intent"
+
+	// ExpectedRemediationAnnotation labels generated scenarios for validation.
+	// It is never copied into the Failure state sent to TypeSafe.
+	ExpectedRemediationAnnotation = "diagnostics.typesafe.ai/expected-remediation"
 
 	eventReason          = "TypeSafeDiagnosis"
 	queueCapacity        = 128
@@ -62,14 +67,16 @@ type Diagnoser interface {
 }
 
 type queuedFailure struct {
-	pod     *v1.Pod
-	failure diagnosis.Failure
+	pod                 *v1.Pod
+	failure             diagnosis.Failure
+	expectedRemediation diagnosis.Remediation
 }
 
 // Plugin is an informational PostFilter plugin.
 type Plugin struct {
 	handle    fwk.Handle
 	diagnoser Diagnoser
+	recorder  observation.Recorder
 	queue     chan queuedFailure
 
 	mu     sync.Mutex
@@ -82,6 +89,12 @@ var _ fwk.PostFilterPlugin = &Plugin{}
 // New constructs the plugin. A missing API key is a startup error rather than
 // a stream of failed requests hidden in scheduler logs.
 func New(ctx context.Context, _ runtime.Object, handle fwk.Handle) (fwk.Plugin, error) {
+	return NewWithRecorder(ctx, nil, handle, nil)
+}
+
+// NewWithRecorder constructs the plugin and sends completed advisory traces to
+// recorder. Recording is optional and has no effect on scheduling decisions.
+func NewWithRecorder(ctx context.Context, _ runtime.Object, handle fwk.Handle, recorder observation.Recorder) (fwk.Plugin, error) {
 	client, err := diagnosis.NewClient(os.Getenv("TYPESAFE_API_KEY"))
 	if err != nil {
 		return nil, fmt.Errorf("initialize %s: %w", Name, err)
@@ -89,6 +102,7 @@ func New(ctx context.Context, _ runtime.Object, handle fwk.Handle) (fwk.Plugin, 
 	plugin := &Plugin{
 		handle:    handle,
 		diagnoser: client,
+		recorder:  recorder,
 		queue:     make(chan queuedFailure, queueCapacity),
 		recent:    make(map[string]time.Time),
 		now:       time.Now,
@@ -121,7 +135,11 @@ func (p *Plugin) PostFilter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 		return nil, fwk.NewStatus(fwk.Unschedulable)
 	}
 
-	item := queuedFailure{pod: pod.DeepCopy(), failure: failure}
+	item := queuedFailure{
+		pod:                 pod.DeepCopy(),
+		failure:             failure,
+		expectedRemediation: diagnosis.Remediation(pod.Annotations[ExpectedRemediationAnnotation]),
+	}
 	select {
 	case p.queue <- item:
 	default:
@@ -143,15 +161,18 @@ func (p *Plugin) run(ctx context.Context) {
 }
 
 func (p *Plugin) diagnose(parent context.Context, item queuedFailure) {
+	startedAt := p.now()
 	ctx, cancel := context.WithTimeout(parent, diagnosisTimeout)
 	defer cancel()
 
 	result, err := p.diagnoser.Diagnose(ctx, item.failure)
 	if err != nil {
+		p.recordObservation(item, startedAt, nil, "", false, err)
 		klog.FromContext(parent).Error(err, "TypeSafe diagnosis failed", "pod", klog.KObj(item.pod))
 		return
 	}
 	recommendation, ok := result.Recommendation(diagnosis.DefaultRecommendationConfidence)
+	p.recordObservation(item, startedAt, &result, recommendation, ok, nil)
 	if !ok {
 		klog.FromContext(parent).Info("TypeSafe diagnosis was inconclusive", "pod", klog.KObj(item.pod), "remediation", result.Remediation, "confidence", result.Confidence)
 		return
@@ -168,6 +189,36 @@ func (p *Plugin) diagnose(parent context.Context, item queuedFailure) {
 		result.Remediation,
 		result.Confidence,
 	)
+}
+
+func (p *Plugin) recordObservation(item queuedFailure, startedAt time.Time, result *diagnosis.Result, recommendation string, published bool, diagnoseErr error) {
+	if p.recorder == nil {
+		return
+	}
+	validation := observation.ValidationUnlabelled
+	if diagnoseErr != nil {
+		validation = observation.ValidationError
+	} else if item.expectedRemediation != "" {
+		validation = observation.ValidationFailed
+		if result != nil && result.Remediation == item.expectedRemediation {
+			validation = observation.ValidationPassed
+		}
+	}
+	record := observation.Observation{
+		ID:                      string(item.pod.UID),
+		ObservedAt:              p.now(),
+		DurationMilliseconds:    p.now().Sub(startedAt).Milliseconds(),
+		Failure:                 item.failure,
+		Result:                  result,
+		ExpectedRemediation:     item.expectedRemediation,
+		Validation:              validation,
+		Recommendation:          recommendation,
+		RecommendationPublished: published,
+	}
+	if diagnoseErr != nil {
+		record.Error = diagnoseErr.Error()
+	}
+	p.recorder.Record(record)
 }
 
 func (p *Plugin) reserveFingerprint(fingerprint string) bool {
