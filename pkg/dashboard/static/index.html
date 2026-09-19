@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Generate Kubernetes scheduling failures and inspect Jev's typed diagnoses.">
+  <title>Jev Scheduling Lab</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Jev Scheduling Lab home">
+      <span class="brand-mark">J</span>
+      <span>
+        <strong>Jev</strong>
+        <small>Scheduling lab</small>
+      </span>
+    </a>
+    <div class="connection" id="connection-status" aria-live="polite">
+      <span class="connection-dot"></span>
+      <span>Connecting</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Kubernetes × programmable judgment</p>
+        <h1>Make a Pod impossible.<br><em>Watch Jev find out why.</em></h1>
+        <p class="lede">Generate real scheduling failures, inspect the exact bounded evidence sent to Jev, and validate typed recommendations without letting AI touch a scheduling decision.</p>
+      </div>
+      <div class="metrics" aria-label="Run metrics">
+        <div class="metric">
+          <span class="metric-value" id="metric-total">0</span>
+          <span class="metric-label">diagnoses</span>
+        </div>
+        <div class="metric">
+          <span class="metric-value" id="metric-pass">—</span>
+          <span class="metric-label">validation</span>
+        </div>
+        <div class="metric">
+          <span class="metric-value" id="metric-latency">—</span>
+          <span class="metric-label">median latency</span>
+        </div>
+        <div class="metric">
+          <span class="metric-value" id="metric-tokens">0</span>
+          <span class="metric-label">tokens</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <aside class="control-panel panel">
+        <div class="panel-heading">
+          <span class="step">01</span>
+          <div>
+            <p class="eyebrow">Experiment</p>
+            <h2>Generate failures</h2>
+          </div>
+        </div>
+
+        <form id="scenario-form">
+          <fieldset>
+            <legend>Failure family</legend>
+            <label class="scenario-option">
+              <input type="radio" name="scenario" value="capacity" checked>
+              <span class="scenario-icon">CPU</span>
+              <span><strong>Capacity</strong><small>100 CPU request</small></span>
+            </label>
+            <label class="scenario-option">
+              <input type="radio" name="scenario" value="constraints">
+              <span class="scenario-icon">AFF</span>
+              <span><strong>Constraints</strong><small>Impossible node selector</small></span>
+            </label>
+            <label class="scenario-option">
+              <input type="radio" name="scenario" value="storage">
+              <span class="scenario-icon">PV</span>
+              <span><strong>Storage</strong><small>Unsatisfiable PV topology</small></span>
+            </label>
+            <label class="scenario-option">
+              <input type="radio" name="scenario" value="mixed">
+              <span class="scenario-icon">MIX</span>
+              <span><strong>Mixed batch</strong><small>Round-robin all three</small></span>
+            </label>
+          </fieldset>
+
+          <div class="count-control">
+            <label for="event-count">Failure events</label>
+            <div class="stepper">
+              <button type="button" id="count-down" aria-label="Decrease event count">−</button>
+              <input id="event-count" name="count" type="number" min="1" max="25" value="3" inputmode="numeric">
+              <button type="button" id="count-up" aria-label="Increase event count">+</button>
+            </div>
+          </div>
+
+          <button class="primary-button" type="submit" id="generate-button">
+            <span>Launch experiment</span>
+            <span aria-hidden="true">↗</span>
+          </button>
+        </form>
+
+        <button class="text-button" type="button" id="clear-button">Clear generated run</button>
+        <p class="boundary-note"><span>Safety boundary</span> Pods remain Pending. Jev advises asynchronously; the scheduler remains in control.</p>
+      </aside>
+
+      <section class="stream-panel panel">
+        <div class="stream-heading">
+          <div class="panel-heading">
+            <span class="step">02</span>
+            <div>
+              <p class="eyebrow">Live result stream</p>
+              <h2>Typed decisions</h2>
+            </div>
+          </div>
+          <div class="filters" role="group" aria-label="Filter diagnoses">
+            <button class="filter active" type="button" data-filter="all">All</button>
+            <button class="filter" type="button" data-filter="passed">Passed</button>
+            <button class="filter" type="button" data-filter="failed">Failed</button>
+          </div>
+        </div>
+
+        <div class="empty-state" id="empty-state">
+          <div class="radar" aria-hidden="true"><span></span></div>
+          <h3>No judgments yet</h3>
+          <p>Launch a scenario. Each Pod will fail scheduling, produce structured evidence, and enter the asynchronous Jev queue.</p>
+        </div>
+        <div class="decision-list" id="decision-list" aria-live="polite"></div>
+      </section>
+
+      <aside class="contract-panel panel">
+        <div class="panel-heading">
+          <span class="step">03</span>
+          <div>
+            <p class="eyebrow">Decision contract</p>
+            <h2>What Jev answers</h2>
+          </div>
+        </div>
+        <div class="contract-meta">
+          <div><span>Model</span><strong id="contract-model">—</strong></div>
+          <div><span>Publish threshold</span><strong id="contract-threshold">—</strong></div>
+        </div>
+        <div id="contract-questions" class="contract-questions"></div>
+        <p class="contract-footnote">Four independent Noul probabilities plus one closed-set Choice. No prose is parsed on return.</p>
+      </aside>
+    </section>
+  </main>
+
+  <dialog id="inspect-dialog">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow">Request / response trace</p>
+        <h2 id="dialog-title">Diagnosis detail</h2>
+      </div>
+      <button class="dialog-close" type="button" id="dialog-close" aria-label="Close details">×</button>
+    </div>
+    <div id="dialog-content"></div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
