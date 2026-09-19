@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: typesafe-scheduler
+  namespace: typesafe-system
+  labels:
+    app.kubernetes.io/name: typesafe-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: typesafe-scheduler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: typesafe-scheduler
+    spec:
+      serviceAccountName: typesafe-scheduler
+      containers:
+      - name: scheduler
+        image: typesafe-scheduler-diagnostics:dev
+        imagePullPolicy: IfNotPresent
+        args:
+        - --config=/etc/kubernetes/scheduler-config.yaml
+        env:
+        - name: TYPESAFE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: typesafe-api
+              key: TYPESAFE_API_KEY
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 10259
+            scheme: HTTPS
+          initialDelaySeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 10259
+            scheme: HTTPS
+          initialDelaySeconds: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+        volumeMounts:
+        - name: scheduler-config
+          mountPath: /etc/kubernetes
+          readOnly: true
+      volumes:
+      - name: scheduler-config
+        configMap:
+          name: typesafe-scheduler-config

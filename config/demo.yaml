@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: typesafe-demo
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: insufficient-cpu
+  namespace: typesafe-demo
+  annotations:
+    diagnostics.typesafe.ai/intent: Run a deliberately oversized batch worker.
+spec:
+  schedulerName: typesafe-scheduler
+  restartPolicy: Never
+  tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    resources:
+      requests:
+        cpu: "100"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: impossible-affinity
+  namespace: typesafe-demo
+  annotations:
+    diagnostics.typesafe.ai/intent: Run only in the fictional unavailable pool.
+spec:
+  schedulerName: typesafe-scheduler
+  restartPolicy: Never
+  tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  nodeSelector:
+    diagnostics.typesafe.ai/pool: unavailable
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: typesafe-demo-static
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: Immediate
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: typesafe-demo-impossible-pv
+spec:
+  storageClassName: typesafe-demo-static
+  persistentVolumeReclaimPolicy: Retain
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  local:
+    path: /var/local/typesafe-demo
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - node-that-does-not-exist
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: impossible-storage
+  namespace: typesafe-demo
+spec:
+  storageClassName: typesafe-demo-static
+  volumeName: typesafe-demo-impossible-pv
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: impossible-storage
+  namespace: typesafe-demo
+  annotations:
+    diagnostics.typesafe.ai/intent: Mount a local volume for a small database.
+spec:
+  schedulerName: typesafe-scheduler
+  restartPolicy: Never
+  tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: impossible-storage
