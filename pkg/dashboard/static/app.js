@@ -306,6 +306,17 @@ for (const button of document.querySelectorAll(".inspector-tab")) {
   });
 }
 byId("generate-button").disabled = true;
+// Reflow the SVG itself at the app-panel breakpoint so its labels stay legible
+// and both outcomes remain visible, rather than shrinking the entire diagram.
+const pipelineLayout = new ResizeObserver(([entry]) => {
+  const compact = entry.contentRect.width < 800;
+  byId("pipeline").setAttribute("viewBox", compact ? "0 0 748 336" : "0 0 1120 236");
+  byId("node-advice").setAttribute("transform", compact ? "translate(-610 206)" : "");
+  byId("node-review").setAttribute("transform", compact ? "translate(-354 94)" : "");
+  byId("path-advice").setAttribute("d", compact ? "M724 110H728Q738 110 738 120V202Q738 212 728 212H380Q370 212 370 222V238" : "M724 110H794Q810 110 810 94V82Q810 66 826 66H866");
+  byId("path-review").setAttribute("d", compact ? "M724 110H728Q738 110 738 120V202Q738 212 728 212H636Q626 212 626 222V238" : "M724 110H794Q810 110 810 126V162Q810 178 826 178H866");
+});
+pipelineLayout.observe(document.querySelector(".flow-scroll"));
 const events = new EventSource("/api/v1/events");
 events.onmessage = (message) => {
   try { applySnapshot(JSON.parse(message.data)); }

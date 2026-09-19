@@ -42,7 +42,7 @@ h1 { font-weight: 550; font-size: clamp(28px, 3vw, 38px); letter-spacing: -1.5px
 .section-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; padding: 0 21px; }
 h2 { font-size: 13px; font-weight: 600; letter-spacing: -.15px; }
 .flow-scroll { overflow-x: auto; padding: 0 14px; }
-#pipeline { display: block; width: 100%; min-width: 690px; }
+#pipeline { display: block; width: 100%; min-width: 560px; }
 .flow-links { stroke: #c8c8c8; stroke-width: 1; color: #999; }
 .flow-node { color: var(--ink); }
 .flow-node > rect { fill: #fff; stroke: #d9d9d9; }
@@ -169,6 +169,7 @@ pre { margin: 12px 0 0; padding: 12px; background: var(--soft); border: 1px soli
   .flow-footer { display: block; padding: 10px 15px; }
   .flow-footer > span { display: block; }
   .flow-footer > span:last-child { margin-top: 5px; }
+  .flow-footer::after { content: "Scroll diagram horizontally →"; display: block; margin-top: 7px; color: #444; }
   .generator { padding: 17px 15px; gap: 15px; }
   .primary-button { width: 100%; }
   .metrics > div { padding: 0 12px; }
