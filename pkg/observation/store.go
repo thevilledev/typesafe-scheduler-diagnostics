@@ -36,9 +36,10 @@ const (
 	ValidationError      Validation = "error"
 )
 
-// Observation is one completed TypeSafe request and the policy applied to it.
+// Observation is the latest lifecycle state of one advisory diagnosis.
 type Observation struct {
 	ID                      string                `json:"id"`
+	Stage                   string                `json:"stage"`
 	ObservedAt              time.Time             `json:"observed_at"`
 	DurationMilliseconds    int64                 `json:"duration_milliseconds"`
 	Failure                 diagnosis.Failure     `json:"failure"`
@@ -50,16 +51,17 @@ type Observation struct {
 	Error                   string                `json:"error,omitempty"`
 }
 
-// Recorder receives completed observations without controlling scheduling.
+// Recorder receives lifecycle observations without controlling scheduling.
 type Recorder interface {
 	Record(Observation)
 }
 
 // Memory is a concurrency-safe, bounded, newest-first observation store.
 type Memory struct {
-	mu       sync.RWMutex
-	capacity int
-	items    []Observation
+	mu        sync.RWMutex
+	capacity  int
+	items     []Observation
+	listeners map[chan struct{}]struct{}
 }
 
 // NewMemory creates a store that retains at most capacity observations.
@@ -67,18 +69,51 @@ func NewMemory(capacity int) *Memory {
 	if capacity < 1 {
 		capacity = 1
 	}
-	return &Memory{capacity: capacity}
+	return &Memory{capacity: capacity, listeners: make(map[chan struct{}]struct{})}
 }
 
-// Record appends an observation and evicts the oldest entry when full.
+// Record updates a trace or appends a new one, evicting the oldest when full.
 func (m *Memory) Record(observation Observation) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// A trace retains its position as it moves from queued to evaluating to
+	// complete, so updates do not count as additional requests.
+	for index := range m.items {
+		if m.items[index].ID == observation.ID {
+			m.items[index] = observation
+			m.notify()
+			return
+		}
+	}
 	m.items = append(m.items, observation)
 	if overflow := len(m.items) - m.capacity; overflow > 0 {
 		copy(m.items, m.items[overflow:])
 		m.items = m.items[:m.capacity]
+	}
+	m.notify()
+}
+
+// Subscribe signals changes without letting a slow browser block scheduling.
+// Notifications may coalesce; consumers read the latest snapshot each time.
+func (m *Memory) Subscribe() (<-chan struct{}, func()) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	changed := make(chan struct{}, 1)
+	m.listeners[changed] = struct{}{}
+	return changed, func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		delete(m.listeners, changed)
+	}
+}
+
+func (m *Memory) notify() {
+	for changed := range m.listeners {
+		select {
+		case changed <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -102,4 +137,5 @@ func (m *Memory) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.items = nil
+	m.notify()
 }

@@ -3,161 +3,135 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Generate Kubernetes scheduling failures and inspect Jev's typed diagnoses.">
-  <title>Jev Scheduling Lab</title>
+  <meta name="description" content="A live Kubernetes scheduling experiment. Generate failures, inspect Jev's judgments, and evaluate the results.">
+  <title>Jev — Scheduling lab</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="grain" aria-hidden="true"></div>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Jev Scheduling Lab home">
-      <span class="brand-mark">J</span>
-      <span>
-        <strong>Jev</strong>
-        <small>Scheduling lab</small>
-      </span>
+    <a class="brand" href="/" aria-label="Jev scheduling lab">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3 3h18v18H3z M9 7h7v7a4 4 0 0 1-8 0" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      <strong>jev</strong><span class="brand-divider">/</span><span>Scheduling lab</span>
     </a>
-    <div class="connection" id="connection-status" aria-live="polite">
-      <span class="connection-dot"></span>
-      <span>Connecting</span>
-    </div>
+    <div class="connection" id="connection-status" role="status"><span class="status-dot"></span><span>Connecting</span></div>
   </header>
 
   <main>
-    <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">Kubernetes × programmable judgment</p>
-        <h1>Make a Pod impossible.<br><em>Watch Jev find out why.</em></h1>
-        <p class="lede">Generate real scheduling failures, inspect the exact bounded evidence sent to Jev, and validate typed recommendations without letting AI touch a scheduling decision.</p>
-      </div>
-      <div class="metrics" aria-label="Run metrics">
-        <div class="metric">
-          <span class="metric-value" id="metric-total">0</span>
-          <span class="metric-label">diagnoses</span>
-        </div>
-        <div class="metric">
-          <span class="metric-value" id="metric-pass">—</span>
-          <span class="metric-label">validation</span>
-        </div>
-        <div class="metric">
-          <span class="metric-value" id="metric-latency">—</span>
-          <span class="metric-label">median latency</span>
-        </div>
-        <div class="metric">
-          <span class="metric-value" id="metric-tokens">0</span>
-          <span class="metric-label">tokens</span>
-        </div>
-      </div>
+    <section class="intro">
+      <div><p class="eyebrow">Kubernetes diagnostics</p><h1>Scheduling, explained.</h1><p>Create a failure. Watch Jev interpret the evidence. Check its judgment.</p></div>
+      <span class="environment"><span class="status-dot"></span> Local experiment</span>
     </section>
 
-    <section class="workspace">
-      <aside class="control-panel panel">
-        <div class="panel-heading">
-          <span class="step">01</span>
-          <div>
-            <p class="eyebrow">Experiment</p>
-            <h2>Generate failures</h2>
-          </div>
+    <section class="flow-panel" aria-labelledby="flow-heading">
+      <div class="section-bar"><h2 id="flow-heading">Live pipeline</h2><span class="mono muted" id="flow-status" role="status">Waiting for scheduler data</span></div>
+      <div class="flow-scroll">
+        <svg id="pipeline" viewBox="0 0 1120 236" role="img" aria-labelledby="pipeline-title pipeline-description">
+          <title id="pipeline-title">Live scheduling diagnosis pipeline</title>
+          <desc id="pipeline-description">Real scheduler failures enter a queue, are evaluated by Jev, then either produce advice or are held for review.</desc>
+          <defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1l6 3-6 3" fill="none" stroke="currentColor"/></marker></defs>
+          <g class="flow-links" fill="none" marker-end="url(#arrow)">
+            <path id="path-capture" d="M204 110H284"/>
+            <path id="path-evaluate" d="M464 110H544"/>
+            <path id="path-advice" d="M724 110H794Q810 110 810 94V82Q810 66 826 66H866"/>
+            <path id="path-review" d="M724 110H794Q810 110 810 126V162Q810 178 826 178H866"/>
+          </g>
+          <g class="flow-node" id="node-capture">
+            <text class="flow-index" x="24" y="39">01 / OBSERVE</text>
+            <rect x="24" y="62" width="180" height="96" rx="4"/>
+            <g transform="translate(42 81)" fill="none" stroke="currentColor"><path d="m0 4 8-4 8 4v9l-8 4-8-4z m0-9 8 4 8-4 M8 8v9"/></g>
+            <text class="flow-label" x="68" y="93">Scheduler</text>
+            <text class="flow-number" id="flow-captured" x="42" y="136">0</text>
+            <text class="flow-unit" x="92" y="134">failures captured</text>
+            <text class="flow-caption" x="24" y="183">Structured node evidence</text>
+          </g>
+          <g class="flow-node" id="node-queue">
+            <text class="flow-index" x="284" y="39">02 / QUEUE</text>
+            <rect x="284" y="62" width="180" height="96" rx="4"/>
+            <g transform="translate(302 81)" fill="none" stroke="currentColor"><path d="M0 1h16M0 8h16M0 15h16"/><path d="M12 0v16" stroke-width="3"/></g>
+            <text class="flow-label" x="328" y="93">Evidence queue</text>
+            <text class="flow-number" id="flow-queued" x="302" y="136">0</text>
+            <text class="flow-unit" x="352" y="134">waiting</text>
+            <text class="flow-caption" x="284" y="183">Asynchronous · bounded</text>
+          </g>
+          <g class="flow-node jev-node" id="node-jev">
+            <text class="flow-index" x="544" y="39">03 / JUDGE</text>
+            <rect x="544" y="62" width="180" height="96" rx="4"/>
+            <g transform="translate(562 81)" fill="none" stroke="currentColor"><path d="M0 0h16v16H0zM5 4h7v6a3 3 0 0 1-6 0"/></g>
+            <text class="flow-label" x="588" y="93">Jev</text>
+            <text class="flow-number" id="flow-evaluating" x="562" y="136">0</text>
+            <text class="flow-unit" x="600" y="134">evaluating</text>
+            <text class="flow-caption" x="544" y="183">4 probabilities + 1 choice</text>
+          </g>
+          <g class="flow-node" id="node-advice">
+            <rect x="866" y="32" width="228" height="68" rx="4"/>
+            <path d="m884 58 5 5 9-11" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text class="flow-label" x="909" y="61">Advice emitted</text>
+            <text class="flow-number small" id="flow-advice" x="1074" y="62" text-anchor="end">0</text>
+            <text class="flow-caption" x="884" y="83">Known choice · confidence ≥ 75%</text>
+          </g>
+          <g class="flow-node review-node" id="node-review">
+            <rect x="866" y="144" width="228" height="68" rx="4"/>
+            <path d="M886 164v12m6-12v12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text class="flow-label" x="909" y="173">Held / error</text>
+            <text class="flow-number small" id="flow-review" x="1074" y="174" text-anchor="end">0</text>
+            <text class="flow-caption" x="884" y="195">No recommendation emitted</text>
+          </g>
+          <g id="flow-packets" aria-hidden="true"></g>
+        </svg>
+      </div>
+      <div class="flow-footer"><span id="active-work">No active requests</span><span>Advisory only · scheduling stays in Kubernetes</span></div>
+    </section>
+
+    <form id="scenario-form" class="generator">
+      <div class="generator-title"><h2>New experiment</h2><p>One Pod per failure event.</p></div>
+      <label class="field" for="scenario">Scenario
+        <select id="scenario" name="scenario">
+          <option value="mixed">Mixed · all three</option>
+          <option value="capacity">Capacity · 100 CPU request</option>
+          <option value="constraints">Constraints · node selector</option>
+          <option value="storage">Storage · PV topology</option>
+        </select>
+      </label>
+      <label class="field count-field" for="event-count">Events <span class="muted">1–25</span>
+        <input id="event-count" name="count" type="number" min="1" max="25" value="6" required inputmode="numeric">
+      </label>
+      <button class="primary-button" type="submit" id="generate-button">Run experiment <span aria-hidden="true">↗</span></button>
+    </form>
+    <p class="run-status" id="run-status" role="status"></p>
+
+    <section class="results-layout">
+      <div class="results-panel">
+        <div class="section-bar"><h2>Observations <span id="observation-count" class="count-label">0</span></h2><button class="quiet-button" id="clear-button" type="button">Clear generated run</button></div>
+        <div class="metrics">
+          <div><span>Label agreement</span><strong id="metric-pass">—</strong><small id="metric-pass-note">No labelled results</small></div>
+          <div><span>Median API time</span><strong id="metric-latency">—</strong><small>Excludes queue time</small></div>
+          <div><span>Tokens used</span><strong id="metric-tokens">0</strong><small>Input + output</small></div>
         </div>
-
-        <form id="scenario-form">
-          <fieldset>
-            <legend>Failure family</legend>
-            <label class="scenario-option">
-              <input type="radio" name="scenario" value="capacity" checked>
-              <span class="scenario-icon">CPU</span>
-              <span><strong>Capacity</strong><small>100 CPU request</small></span>
-            </label>
-            <label class="scenario-option">
-              <input type="radio" name="scenario" value="constraints">
-              <span class="scenario-icon">AFF</span>
-              <span><strong>Constraints</strong><small>Impossible node selector</small></span>
-            </label>
-            <label class="scenario-option">
-              <input type="radio" name="scenario" value="storage">
-              <span class="scenario-icon">PV</span>
-              <span><strong>Storage</strong><small>Unsatisfiable PV topology</small></span>
-            </label>
-            <label class="scenario-option">
-              <input type="radio" name="scenario" value="mixed">
-              <span class="scenario-icon">MIX</span>
-              <span><strong>Mixed batch</strong><small>Round-robin all three</small></span>
-            </label>
-          </fieldset>
-
-          <div class="count-control">
-            <label for="event-count">Failure events</label>
-            <div class="stepper">
-              <button type="button" id="count-down" aria-label="Decrease event count">−</button>
-              <input id="event-count" name="count" type="number" min="1" max="25" value="3" inputmode="numeric">
-              <button type="button" id="count-up" aria-label="Increase event count">+</button>
-            </div>
+        <div class="list-toolbar">
+          <div class="filters" role="group" aria-label="Filter observations">
+            <button class="filter active" type="button" data-filter="all" aria-pressed="true">All</button>
+            <button class="filter" type="button" data-filter="active" aria-pressed="false">In progress</button>
+            <button class="filter" type="button" data-filter="failed" aria-pressed="false">Needs review</button>
           </div>
-
-          <button class="primary-button" type="submit" id="generate-button">
-            <span>Launch experiment</span>
-            <span aria-hidden="true">↗</span>
-          </button>
-        </form>
-
-        <button class="text-button" type="button" id="clear-button">Clear generated run</button>
-        <p class="boundary-note"><span>Safety boundary</span> Pods remain Pending. Jev advises asynchronously; the scheduler remains in control.</p>
-      </aside>
-
-      <section class="stream-panel panel">
-        <div class="stream-heading">
-          <div class="panel-heading">
-            <span class="step">02</span>
-            <div>
-              <p class="eyebrow">Live result stream</p>
-              <h2>Typed decisions</h2>
-            </div>
-          </div>
-          <div class="filters" role="group" aria-label="Filter diagnoses">
-            <button class="filter active" type="button" data-filter="all">All</button>
-            <button class="filter" type="button" data-filter="passed">Passed</button>
-            <button class="filter" type="button" data-filter="failed">Failed</button>
-          </div>
+          <span class="mono muted">Latest 500</span>
         </div>
-
-        <div class="empty-state" id="empty-state">
-          <div class="radar" aria-hidden="true"><span></span></div>
-          <h3>No judgments yet</h3>
-          <p>Launch a scenario. Each Pod will fail scheduling, produce structured evidence, and enter the asynchronous Jev queue.</p>
+        <div class="table-scroll">
+          <table><thead><tr><th scope="col">Pod / diagnosis</th><th scope="col">Validation</th><th scope="col" class="numeric">Confidence</th><th scope="col"><span class="sr-only">Inspect</span></th></tr></thead><tbody id="decision-list"></tbody></table>
+          <div class="empty-state" id="empty-state"><svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true"><path d="M8 10h32v28H8zM8 19h32M18 19v19" fill="none" stroke="currentColor"/></svg><h3>Ready when you are.</h3><p>Run an experiment to see scheduler evidence become a typed judgment.</p></div>
         </div>
-        <div class="decision-list" id="decision-list" aria-live="polite"></div>
-      </section>
-
-      <aside class="contract-panel panel">
-        <div class="panel-heading">
-          <span class="step">03</span>
-          <div>
-            <p class="eyebrow">Decision contract</p>
-            <h2>What Jev answers</h2>
-          </div>
+      </div>
+      <aside class="inspector" aria-label="Selected observation">
+        <div class="section-bar"><h2>Inspector</h2><span class="mono muted" id="inspector-status">No selection</span></div>
+        <div class="inspector-tabs" role="group" aria-label="Inspector view">
+          <button class="inspector-tab active" data-view="judgment" aria-pressed="true" type="button">Judgment</button>
+          <button class="inspector-tab" data-view="evidence" aria-pressed="false" type="button">Evidence</button>
+          <button class="inspector-tab" data-view="contract" aria-pressed="false" type="button">Contract</button>
         </div>
-        <div class="contract-meta">
-          <div><span>Model</span><strong id="contract-model">—</strong></div>
-          <div><span>Publish threshold</span><strong id="contract-threshold">—</strong></div>
-        </div>
-        <div id="contract-questions" class="contract-questions"></div>
-        <p class="contract-footnote">Four independent Noul probabilities plus one closed-set Choice. No prose is parsed on return.</p>
+        <div id="inspector-content" class="inspector-content"><p class="muted">Select an observation to inspect its evidence and result.</p></div>
       </aside>
     </section>
+    <footer class="page-footer"><span>TypeSafe / Jev</span><span>Expected labels stay outside model input. Agreement on these scenarios is not a production accuracy estimate.</span></footer>
   </main>
-
-  <dialog id="inspect-dialog">
-    <div class="dialog-heading">
-      <div>
-        <p class="eyebrow">Request / response trace</p>
-        <h2 id="dialog-title">Diagnosis detail</h2>
-      </div>
-      <button class="dialog-close" type="button" id="dialog-close" aria-label="Close details">×</button>
-    </div>
-    <div id="dialog-content"></div>
-  </dialog>
-
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/app.js" defer></script>
 </body>
 </html>

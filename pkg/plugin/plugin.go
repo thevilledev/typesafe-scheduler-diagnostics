@@ -67,6 +67,7 @@ type Diagnoser interface {
 }
 
 type queuedFailure struct {
+	id                  string
 	pod                 *v1.Pod
 	failure             diagnosis.Failure
 	expectedRemediation diagnosis.Remediation
@@ -136,13 +137,16 @@ func (p *Plugin) PostFilter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 	}
 
 	item := queuedFailure{
+		id:                  fmt.Sprintf("%s-%d", pod.UID, p.now().UnixNano()),
 		pod:                 pod.DeepCopy(),
 		failure:             failure,
 		expectedRemediation: diagnosis.Remediation(pod.Annotations[ExpectedRemediationAnnotation]),
 	}
+	p.recordStage(item, "queued", "")
 	select {
 	case p.queue <- item:
 	default:
+		p.recordStage(item, "dropped", "Advisory queue is full; wait for capacity and retry the scenario.")
 		p.releaseFingerprint(fingerprint)
 		klog.FromContext(ctx).Info("Dropping TypeSafe diagnosis because the advisory queue is full", "pod", klog.KObj(pod), "capacity", cap(p.queue))
 	}
@@ -162,6 +166,7 @@ func (p *Plugin) run(ctx context.Context) {
 
 func (p *Plugin) diagnose(parent context.Context, item queuedFailure) {
 	startedAt := p.now()
+	p.recordStage(item, "evaluating", "")
 	ctx, cancel := context.WithTimeout(parent, diagnosisTimeout)
 	defer cancel()
 
@@ -191,6 +196,20 @@ func (p *Plugin) diagnose(parent context.Context, item queuedFailure) {
 	)
 }
 
+func (p *Plugin) recordStage(item queuedFailure, stage, message string) {
+	if p.recorder == nil {
+		return
+	}
+	p.recorder.Record(observation.Observation{
+		ID:                  item.id,
+		Stage:               stage,
+		ObservedAt:          p.now(),
+		Failure:             item.failure,
+		ExpectedRemediation: item.expectedRemediation,
+		Error:               message,
+	})
+}
+
 func (p *Plugin) recordObservation(item queuedFailure, startedAt time.Time, result *diagnosis.Result, recommendation string, published bool, diagnoseErr error) {
 	if p.recorder == nil {
 		return
@@ -205,7 +224,8 @@ func (p *Plugin) recordObservation(item queuedFailure, startedAt time.Time, resu
 		}
 	}
 	record := observation.Observation{
-		ID:                      string(item.pod.UID),
+		ID:                      item.id,
+		Stage:                   "complete",
 		ObservedAt:              p.now(),
 		DurationMilliseconds:    p.now().Sub(startedAt).Milliseconds(),
 		Failure:                 item.failure,

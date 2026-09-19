@@ -43,8 +43,8 @@ import (
 )
 
 const (
-	// DefaultAddress is the dashboard's cluster-local listen address.
-	DefaultAddress = ":8080"
+	// DefaultAddress allows access through kubectl port-forward only.
+	DefaultAddress = "127.0.0.1:8080"
 
 	// DefaultNamespace is isolated from ordinary application workloads.
 	DefaultNamespace = "typesafe-demo"
@@ -159,10 +159,11 @@ func New(client kubernetes.Interface, observations *observation.Memory, namespac
 		response.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /api/v1/snapshot", server.snapshot)
+	mux.HandleFunc("GET /api/v1/events", server.events)
 	mux.HandleFunc("POST /api/v1/scenarios", server.generate)
 	mux.HandleFunc("DELETE /api/v1/scenarios", server.clear)
 	mux.Handle("/", http.FileServer(http.FS(staticRoot)))
-	server.handler = securityHeaders(mux)
+	server.handler = securityHeaders(http.NewCrossOriginProtection().Handler(mux))
 	return server, nil
 }
 
@@ -204,11 +205,50 @@ func Start(ctx context.Context, address string, client kubernetes.Interface, obs
 }
 
 func (s *Server) snapshot(response http.ResponseWriter, _ *http.Request) {
-	writeJSON(response, http.StatusOK, snapshotResponse{
+	writeJSON(response, http.StatusOK, s.currentSnapshot())
+}
+
+func (s *Server) currentSnapshot() snapshotResponse {
+	return snapshotResponse{
 		GeneratedAt: time.Now().UTC(),
 		Contract:    diagnosis.DecisionContract(),
-		Items:       s.observations.List(200),
-	})
+		Items:       s.observations.List(500),
+	}
+}
+
+// events streams real lifecycle updates. Each client receives a fresh snapshot
+// after reconnecting, so missing a notification cannot leave counts stale.
+func (s *Server) events(response http.ResponseWriter, request *http.Request) {
+	flusher, ok := response.(http.Flusher)
+	if !ok {
+		http.Error(response, "Streaming is unavailable", http.StatusInternalServerError)
+		return
+	}
+	changed, unsubscribe := s.observations.Subscribe()
+	defer unsubscribe()
+	response.Header().Set("Content-Type", "text/event-stream")
+	response.Header().Set("Cache-Control", "no-cache")
+	response.Header().Set("X-Accel-Buffering", "no")
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		payload, err := json.Marshal(s.currentSnapshot())
+		if err != nil {
+			return
+		}
+		// Bound writes so an abandoned tab does not retain a server goroutine.
+		_ = http.NewResponseController(response).SetWriteDeadline(time.Now().Add(10 * time.Second))
+		if _, err := fmt.Fprintf(response, "data: %s\n\n", payload); err != nil {
+			return
+		}
+		flusher.Flush()
+		select {
+		case <-request.Context().Done():
+			return
+		case <-changed:
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *Server) generate(response http.ResponseWriter, request *http.Request) {

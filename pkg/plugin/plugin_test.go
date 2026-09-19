@@ -18,6 +18,7 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -35,10 +36,13 @@ import (
 func TestFailureFromPostFilter(t *testing.T) {
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace:   "demo",
-			Name:        "api",
-			UID:         types.UID("pod-uid"),
-			Annotations: map[string]string{IntentAnnotation: " Keep the API available across zones. "},
+			Namespace: "demo",
+			Name:      "api",
+			UID:       types.UID("pod-uid"),
+			Annotations: map[string]string{
+				IntentAnnotation:              " Keep the API available across zones. ",
+				ExpectedRemediationAnnotation: "withheld-test-answer",
+			},
 		},
 		Spec: v1.PodSpec{SchedulerName: "typesafe-scheduler"},
 	}
@@ -51,6 +55,10 @@ func TestFailureFromPostFilter(t *testing.T) {
 	)
 
 	failure := FailureFromPostFilter(pod, []string{"node-a", "node-b", "node-c", "node-d"}, statuses)
+	encoded, err := json.Marshal(failure)
+	if err != nil || strings.Contains(string(encoded), "withheld-test-answer") {
+		t.Fatalf("expected answer leaked into model evidence: %s (%v)", encoded, err)
+	}
 	if got, want := failure.Pod.SchedulingIntent, "Keep the API available across zones."; got != want {
 		t.Errorf("intent = %q, want %q", got, want)
 	}
@@ -93,6 +101,9 @@ func TestDiagnoseRecordsValidationWithoutPublishingLowConfidenceAdvice(t *testin
 	if recorder.observation.RecommendationPublished {
 		t.Error("low-confidence recommendation was marked as published")
 	}
+	if got := strings.Join(recorder.stages, ","); got != "evaluating,complete" {
+		t.Errorf("recorded lifecycle = %q, want evaluating,complete", got)
+	}
 }
 
 type staticDiagnoser struct {
@@ -106,10 +117,12 @@ func (d staticDiagnoser) Diagnose(context.Context, diagnosis.Failure) (diagnosis
 
 type captureRecorder struct {
 	observation observation.Observation
+	stages      []string
 }
 
 func (r *captureRecorder) Record(value observation.Observation) {
 	r.observation = value
+	r.stages = append(r.stages, value.Stage)
 }
 
 func TestFailureFromPostFilterBoundsText(t *testing.T) {

@@ -40,3 +40,29 @@ func TestMemoryBoundsAndOrdersObservations(t *testing.T) {
 		t.Errorf("item count after Clear = %d, want 0", got)
 	}
 }
+
+func TestLifecycleUpdatesReplaceAndNotifyWithoutBlocking(t *testing.T) {
+	store := NewMemory(2)
+	changed, unsubscribe := store.Subscribe()
+	for i := 0; i < 1000; i++ {
+		store.Record(Observation{ID: "request", Stage: "queued"})
+	}
+	select {
+	case <-changed:
+	default:
+		t.Fatal("observer was not notified")
+	}
+	store.Record(Observation{ID: "request", Stage: "evaluating"})
+	items := store.List(10)
+	if len(items) != 1 || items[0].Stage != "evaluating" {
+		t.Fatalf("lifecycle update created duplicate or stale observations: %#v", items)
+	}
+	<-changed
+	unsubscribe()
+	store.Record(Observation{ID: "request", Stage: "complete"})
+	select {
+	case <-changed:
+		t.Fatal("unsubscribed observer was notified")
+	default:
+	}
+}

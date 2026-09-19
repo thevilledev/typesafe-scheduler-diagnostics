@@ -17,12 +17,16 @@ limitations under the License.
 package dashboard
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -69,6 +73,50 @@ func TestGenerateCreatesMixedLabeledScenarios(t *testing.T) {
 			t.Errorf("scenario %d = %q, want %q", index, got, want)
 		}
 	}
+}
+
+func TestEventStreamPublishesInitialSnapshotAndLifecycle(t *testing.T) {
+	store := observation.NewMemory(10)
+	store.Record(observation.Observation{ID: "one", Stage: "queued"})
+	dashboard, err := New(fake.NewSimpleClientset(), store, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(dashboard.Handler())
+	defer server.Close()
+	client := &http.Client{Timeout: 5 * time.Second}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/api/v1/events", nil)
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	scanner := bufio.NewScanner(response.Body)
+	scanner.Buffer(make([]byte, 4096), 1<<20)
+	readStage := func(want string) {
+		t.Helper()
+		for scanner.Scan() {
+			if !strings.HasPrefix(scanner.Text(), "data: ") {
+				continue
+			}
+			var snapshot snapshotResponse
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(scanner.Text(), "data: ")), &snapshot); err != nil {
+				t.Fatal(err)
+			}
+			if len(snapshot.Items) != 1 || snapshot.Items[0].Stage != want {
+				t.Fatalf("stream snapshot = %#v, want one %s observation", snapshot.Items, want)
+			}
+			return
+		}
+		t.Fatalf("stream ended before %s: %v", want, scanner.Err())
+	}
+	readStage("queued")
+	store.Record(observation.Observation{ID: "one", Stage: "evaluating"})
+	readStage("evaluating")
+	store.Record(observation.Observation{ID: "one", Stage: "complete"})
+	readStage("complete")
 }
 
 func TestGenerateRejectsUnboundedBatch(t *testing.T) {
