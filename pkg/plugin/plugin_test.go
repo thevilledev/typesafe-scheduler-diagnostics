@@ -1,0 +1,101 @@
+/*
+Copyright 2026 The TypeSafe Scheduler Diagnostics Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package plugin
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	fwk "k8s.io/kube-scheduler/framework"
+	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
+)
+
+func TestFailureFromPostFilter(t *testing.T) {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:   "demo",
+			Name:        "api",
+			UID:         types.UID("pod-uid"),
+			Annotations: map[string]string{IntentAnnotation: " Keep the API available across zones. "},
+		},
+		Spec: v1.PodSpec{SchedulerName: "typesafe-scheduler"},
+	}
+	statuses := schedulerframework.NewNodeToStatus(
+		map[string]*fwk.Status{
+			"node-a": fwk.NewStatus(fwk.UnschedulableAndUnresolvable, "node(s) didn't match Pod's node affinity/selector").WithPlugin("NodeAffinity"),
+			"node-b": fwk.NewStatus(fwk.Unschedulable, "Insufficient cpu").WithPlugin("NodeResourcesFit"),
+		},
+		fwk.NewStatus(fwk.UnschedulableAndUnresolvable, "node(s) had untolerated taint").WithPlugin("TaintToleration"),
+	)
+
+	failure := FailureFromPostFilter(pod, []string{"node-a", "node-b", "node-c", "node-d"}, statuses)
+	if got, want := failure.Pod.SchedulingIntent, "Keep the API available across zones."; got != want {
+		t.Errorf("intent = %q, want %q", got, want)
+	}
+	if got, want := len(failure.Reasons), 3; got != want {
+		t.Fatalf("reason count = %d, want %d: %#v", got, want, failure.Reasons)
+	}
+	if got, want := failure.Reasons[0].Plugin, "NodeAffinity"; got != want {
+		t.Errorf("first reason plugin = %q, want %q", got, want)
+	}
+	if got, want := failure.Reasons[2].Count, 2; got != want {
+		t.Errorf("absent-node reason count = %d, want %d", got, want)
+	}
+	if got, want := strings.Join(failure.UnschedulablePlugins, ","), "NodeAffinity,NodeResourcesFit,TaintToleration"; got != want {
+		t.Errorf("plugins = %q, want %q", got, want)
+	}
+}
+
+func TestFailureFromPostFilterBoundsText(t *testing.T) {
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{IntentAnnotation: strings.Repeat("x", maxTextRunes+10)}}}
+	failure := FailureFromPostFilter(pod, nil, nil)
+	if got, want := len([]rune(failure.Pod.SchedulingIntent)), maxTextRunes; got != want {
+		t.Errorf("intent length = %d, want %d", got, want)
+	}
+}
+
+func TestReserveFingerprintDeduplicatesTemporarily(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	plugin := &Plugin{recent: make(map[string]time.Time), now: func() time.Time { return now }}
+	if !plugin.reserveFingerprint("same") {
+		t.Fatal("first fingerprint was rejected")
+	}
+	if plugin.reserveFingerprint("same") {
+		t.Fatal("duplicate fingerprint was accepted")
+	}
+	now = now.Add(duplicateWindow)
+	if !plugin.reserveFingerprint("same") {
+		t.Fatal("expired fingerprint was rejected")
+	}
+}
+
+func TestReserveFingerprintBoundsHistory(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	plugin := &Plugin{recent: make(map[string]time.Time), now: func() time.Time { return now }}
+	for i := 0; i <= maxRecentFingerprint; i++ {
+		if !plugin.reserveFingerprint(string(rune(i))) {
+			t.Fatalf("fingerprint %d was unexpectedly rejected", i)
+		}
+	}
+	if got := len(plugin.recent); got != maxRecentFingerprint {
+		t.Errorf("recent fingerprint count = %d, want %d", got, maxRecentFingerprint)
+	}
+}
